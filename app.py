@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from foodlabel import Agent2FoodLabel
 from hygeine import Agent2Hygiene
+from robust_ingredientcollector import RobustIngredientCollector
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -18,6 +19,7 @@ CORS(app)
 # Initialize Agents
 agent2_foodlabel = Agent2FoodLabel()
 agent2_hygiene = Agent2Hygiene()
+agent2_coa = RobustIngredientCollector()
 
 
 
@@ -132,6 +134,7 @@ def home():
         "endpoints": {
             "health": "GET /health",
             "check_compliance": "POST /compliance - accepts PIN, geo_location, and array of images",
+            "process_coa": "POST /coa - accepts COA report file upload for lab analysis",
         },
         "request_format": {
             "pin": 123456,
@@ -367,6 +370,72 @@ def check_fssai_compliance():
                 if os.path.exists(temp_file):
                     os.unlink(temp_file)
                 
+    except Exception as e:
+        return jsonify({
+            "status": "failed",
+            "stage": "server_error",
+            "message": f"Internal server error: {str(e)}"
+        }), 500
+
+@app.route('/coa', methods=['POST'])
+def process_coa_report():
+    """Process Certificate of Analysis (COA) report endpoint"""
+    try:
+        # Check if a file was uploaded
+        if 'file' not in request.files:
+            return jsonify({
+                "status": "failed",
+                "stage": "input_validation",
+                "message": "No file provided. Use 'file' parameter to upload COA document."
+            }), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({
+                "status": "failed",
+                "stage": "input_validation",
+                "message": "No file selected"
+            }), 400
+
+        # Validate file type
+        allowed_extensions = {'.pdf', '.txt', '.jpg', '.jpeg', '.png'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+
+        if file_ext not in allowed_extensions:
+            return jsonify({
+                "status": "failed",
+                "stage": "input_validation",
+                "message": f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+            }), 400
+
+        # Save uploaded file to temporary location
+        with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as temp_file:
+            file.save(temp_file.name)
+            temp_file_path = temp_file.name
+
+        try:
+            # Process COA report using RobustIngredientCollector
+            result = agent2_coa.process_coa_report(temp_file_path)
+
+            if "error" in result:
+                return jsonify({
+                    "status": "failed",
+                    "stage": "coa_processing",
+                    "message": result["error"]
+                }), 400
+
+            # Return successful COA analysis
+            return jsonify({
+                "status": "success",
+                "message": "COA report processed successfully",
+                "coa_analysis": result
+            }), 200
+
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+
     except Exception as e:
         return jsonify({
             "status": "failed",
