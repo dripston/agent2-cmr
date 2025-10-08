@@ -18,11 +18,13 @@ app = Flask(__name__)
 agent2_foodlabel = Agent2FoodLabel()
 agent2_hygiene = Agent2Hygiene()
 
-def call_mcp_get_producer_by_fssai(fssai_number):
-    """Call MCP server to get producer data by FSSAI number"""
+
+
+def call_mcp_get_producer_by_pin(pin):
+    """Call MCP server to get producer data by PIN"""
     try:
-        mcp_url = "https://mcp-server-agent1.onrender.com/api/producer/fssai"
-        response = requests.post(mcp_url, json={"fssai_number": fssai_number}, timeout=10)
+        mcp_url = "https://mcp-server-agent1.onrender.com/api/producer/pin"
+        response = requests.post(mcp_url, json={"pin": pin}, timeout=10)
         response.raise_for_status()
         result = response.json()
 
@@ -125,18 +127,21 @@ def home():
     return jsonify({
         "message": "Welcome to Sadapurne Agent2 API",
         "version": "2.0.0",
-        "description": "Handles food label compliance and kitchen hygiene assessment",
+        "description": "Handles food label compliance and kitchen hygiene assessment using PIN-based producer verification",
         "endpoints": {
             "health": "GET /health",
-            "check_compliance": "POST /compliance - accepts array of images (food labels and/or kitchen hygiene)",
+            "check_compliance": "POST /compliance - accepts PIN, geo_location, and array of images",
         },
         "request_format": {
-            "images": ["base64_image_1", "base64_image_2"],
-            "geo_location": {"lat": 28.6139, "lng": 77.2090}
+            "pin": 123456,
+            "geo_location": {"lat": 28.6139, "lng": 77.2090},
+            "images": ["base64_image_1", "base64_image_2"]
         },
-        "image_routing": {
-            "image[0]": "First image is processed as food label for FSSAI compliance",
-            "image[1]": "Second image (optional) is processed as kitchen hygiene assessment"
+        "workflow": {
+            "step_1": "Verify producer using PIN from Agent1",
+            "step_2": "Match geo_location with producer address",
+            "step_3": "Process first image as food label for FSSAI compliance",
+            "step_4": "Process second image (optional) as kitchen hygiene assessment"
         }
     }), 200
 
@@ -167,8 +172,16 @@ def check_fssai_compliance():
                 "message": "Missing required field: geo_location"
             }), 400
 
+        if 'pin' not in data:
+            return jsonify({
+                "status": "failed",
+                "stage": "input_validation",
+                "message": "Missing required field: pin (from Agent1 verification)"
+            }), 400
+
         images = data['images']
         geo_location = data['geo_location']
+        pin = data['pin']
 
         # Validate images format
         if not isinstance(images, list) or len(images) == 0:
@@ -266,7 +279,26 @@ def check_fssai_compliance():
             if results["food_label"]:
                 food_label_path = results["food_label"]
 
-                # Step 1: Extract label text from image
+                # Step 1: Get producer data from MCP using PIN
+                producer_data = call_mcp_get_producer_by_pin(pin)
+
+                if not producer_data:
+                    return jsonify({
+                        "status": "failed",
+                        "stage": "producer_verification",
+                        "message": "PIN not found in verified producers database. Please verify with Agent1 first."
+                    }), 400
+
+                # Step 2: Match location with producer address
+                producer_address = producer_data.get("address", "")
+                if not match_location_with_address(geo_location, producer_address):
+                    return jsonify({
+                        "status": "failed",
+                        "stage": "location_verification",
+                        "message": "address doesn't match"
+                    }), 400
+
+                # Step 3: Extract label text from image
                 extracted_text = agent2_foodlabel.extract_label_text(food_label_path)
 
                 if extracted_text.startswith("Error"):
@@ -276,51 +308,27 @@ def check_fssai_compliance():
                         "message": extracted_text
                     }), 400
 
-                # Step 2: Extract FSSAI from label
-                label_fssai = agent2_foodlabel.extract_fssai_from_label(extracted_text)
-
-                if not label_fssai:
-                    return jsonify({
-                        "status": "failed",
-                        "stage": "fssai_extraction",
-                        "message": "No FSSAI number found on label"
-                    }), 400
-
-                # Step 3: Get producer data from MCP
-                producer_data = call_mcp_get_producer_by_fssai(label_fssai)
-
-                if not producer_data:
-                    return jsonify({
-                        "status": "failed",
-                        "stage": "producer_verification",
-                        "message": "FSSAI number not found in verified producers database"
-                    }), 400
-
-                # Step 4: Match location with producer address
-                producer_address = producer_data.get("address", "")
-                if not match_location_with_address(geo_location, producer_address):
-                    return jsonify({
-                        "status": "failed",
-                        "stage": "location_verification",
-                        "message": "address doesn't match"
-                    }), 400
-
-                # Step 5: Proceed with compliance check
+                # Step 4: Proceed with compliance check
                 ingredients = agent2_foodlabel.extract_ingredients(extracted_text)
                 compliance_result = agent2_foodlabel.check_fssai_compliance(extracted_text)
                 label_manufacturer = agent2_foodlabel.extract_manufacturer_from_label(extracted_text)
                 health_recommendations = agent2_foodlabel.generate_health_recommendations(extracted_text, ingredients)
+
+                # Optional: Extract FSSAI from label for verification (but not required)
+                label_fssai = agent2_foodlabel.extract_fssai_from_label(extracted_text)
 
                 final_result["food_label_analysis"] = {
                     "extracted_text": extracted_text,
                     "ingredients": ingredients,
                     "compliance_result": compliance_result,
                     "label_info": {
-                        "fssai_license": label_fssai,
+                        "fssai_license": label_fssai or "Not extracted (PIN-based verification)",
                         "manufacturer": label_manufacturer or "Not found"
                     },
                     "producer_verification": {
                         "producer_name": producer_data.get("name", "Unknown"),
+                        "producer_pin": pin,
+                        "producer_fssai": producer_data.get("fssai_license_number"),
                         "producer_address": producer_address,
                         "location_matched": True
                     },
@@ -331,11 +339,8 @@ def check_fssai_compliance():
             if results["hygiene"]:
                 hygiene_path = results["hygiene"]
 
-                # Get producer data for hygiene verification (use FSSAI from food label if available)
-                producer_data_for_hygiene = None
-                if final_result["food_label_analysis"]:
-                    fssai_from_label = final_result["food_label_analysis"]["label_info"]["fssai_license"]
-                    producer_data_for_hygiene = call_mcp_get_producer_by_fssai(fssai_from_label)
+                # Get producer data for hygiene verification using PIN
+                producer_data_for_hygiene = call_mcp_get_producer_by_pin(pin)
 
                 # Assess hygiene
                 hygiene_result = agent2_hygiene.assess_hygiene(
