@@ -33,7 +33,7 @@ def call_mcp_get_producer_by_pin(pin):
         print(f"MCP Debug - Payload: {payload}")
         print(f"MCP Debug - PIN type: {type(pin)}")
 
-        response = requests.post(mcp_url, json=payload, timeout=10)
+        response = requests.post(mcp_url, json=payload)
         print(f"MCP Debug - Response status: {response.status_code}")
         print(f"MCP Debug - Response headers: {dict(response.headers)}")
 
