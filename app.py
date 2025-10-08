@@ -363,26 +363,40 @@ def check_fssai_compliance():
 
             # Process hygiene image if provided
             if results["hygiene"]:
+                print(f"Hygiene Debug: Processing hygiene image at {results['hygiene']}")
                 hygiene_path = results["hygiene"]
 
                 # Get producer data for hygiene verification using PIN
                 producer_data_for_hygiene = call_mcp_get_producer_by_pin(pin)
+                print(f"Hygiene Debug: Producer data retrieved: {producer_data_for_hygiene is not None}")
 
                 # Assess hygiene
-                hygiene_result = agent2_hygiene.assess_hygiene(
-                    hygiene_path,
-                    location=f"{geo_location.get('lat', 0)}, {geo_location.get('lng', 0)}",
-                    producer_data=producer_data_for_hygiene
-                )
+                try:
+                    hygiene_result = agent2_hygiene.assess_hygiene(
+                        hygiene_path,
+                        location=f"{geo_location.get('lat', 0)}, {geo_location.get('lng', 0)}",
+                        producer_data=producer_data_for_hygiene
+                    )
+                    print(f"Hygiene Debug: Hygiene assessment result: {hygiene_result}")
 
-                if "error" in hygiene_result:
+                    if "error" in hygiene_result:
+                        print(f"Hygiene Debug: Error in hygiene result: {hygiene_result['error']}")
+                        return jsonify({
+                            "status": "failed",
+                            "stage": "hygiene_assessment",
+                            "message": hygiene_result["error"]
+                        }), 400
+
+                    final_result["hygiene_analysis"] = hygiene_result
+                    print("Hygiene Debug: Hygiene analysis added to final result")
+
+                except Exception as e:
+                    print(f"Hygiene Debug: Exception during hygiene assessment: {str(e)}")
                     return jsonify({
                         "status": "failed",
                         "stage": "hygiene_assessment",
-                        "message": hygiene_result["error"]
+                        "message": f"Hygiene assessment failed: {str(e)}"
                     }), 400
-
-                final_result["hygiene_analysis"] = hygiene_result
 
             return jsonify(final_result), 200
 
