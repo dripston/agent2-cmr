@@ -137,9 +137,17 @@ def home():
             "process_coa": "POST /coa - accepts COA report file upload for lab analysis",
         },
         "request_format": {
-            "pin": 123456,
-            "geo_location": {"lat": 28.6139, "lng": 77.2090},
-            "images": ["base64_image_1", "base64_image_2"]
+            "compliance_endpoint": {
+                "pin": 123456,
+                "geo_location": {"lat": 28.6139, "lng": 77.2090},
+                "images": ["base64_image_1", "base64_image_2"]
+            },
+            "coa_endpoint": {
+                "method": "POST",
+                "content_type": "multipart/form-data",
+                "file_parameter": "file",
+                "supported_formats": [".pdf", ".txt", ".jpg", ".jpeg", ".png"]
+            }
         },
         "workflow": {
             "step_1": "Verify producer using PIN from Agent1",
