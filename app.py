@@ -28,14 +28,27 @@ def call_mcp_get_producer_by_pin(pin):
     """Call MCP server to get producer data by PIN"""
     try:
         mcp_url = "https://mcp-server-agent1.onrender.com/api/producer/pin"
-        response = requests.post(mcp_url, json={"pin": pin}, timeout=10)
+        payload = {"pin": pin}
+        print(f"MCP Debug - URL: {mcp_url}")
+        print(f"MCP Debug - Payload: {payload}")
+        print(f"MCP Debug - PIN type: {type(pin)}")
+
+        response = requests.post(mcp_url, json=payload, timeout=10)
+        print(f"MCP Debug - Response status: {response.status_code}")
+        print(f"MCP Debug - Response headers: {dict(response.headers)}")
+
         response.raise_for_status()
         result = response.json()
+        print(f"MCP Debug - Response JSON: {result}")
 
         if result.get("status") == "success":
             return result["data"]
         else:
+            print(f"MCP Debug - Status not success: {result.get('status')}")
             return None
+    except requests.exceptions.HTTPError as e:
+        print(f"MCP HTTP Error: {e.response.status_code} - {e.response.text}")
+        return None
     except Exception as e:
         print(f"MCP call error: {str(e)}")
         return None
