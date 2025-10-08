@@ -43,14 +43,26 @@ class Agent2FoodLabel:
     def encode_image(self, image_path: str) -> str:
         """Encode image to base64, resizing if necessary."""
         with Image.open(image_path) as img:
+            # Convert to RGB if image has alpha channel (RGBA) to avoid JPEG issues
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # Create white background for transparent images
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                if img.mode == 'RGBA':
+                    background.paste(img, mask=img.split()[-1])  # Use alpha channel as mask
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+
             # Resize if width or height > 1024
             max_size = 1024
             if img.width > max_size or img.height > max_size:
                 img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
 
-            # Save to bytes
+            # Save to bytes as JPEG
             buffer = io.BytesIO()
-            img.save(buffer, format='JPEG')
+            img.save(buffer, format='JPEG', quality=85)
             buffer.seek(0)
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
