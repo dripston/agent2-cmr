@@ -134,9 +134,9 @@ def home():
             "images": ["base64_image_1", "base64_image_2"],
             "geo_location": {"lat": 28.6139, "lng": 77.2090}
         },
-        "image_types": {
-            "food_label": "Food product labels for FSSAI compliance checking",
-            "kitchen_hygiene": "Kitchen/preparation area images for cleanliness assessment"
+        "image_routing": {
+            "image[0]": "First image is processed as food label for FSSAI compliance",
+            "image[1]": "Second image (optional) is processed as kitchen hygiene assessment"
         }
     }), 200
 
@@ -216,36 +216,35 @@ def check_fssai_compliance():
                     temp_image_path = temp_image.name
                     temp_files.append(temp_image_path)
 
-                # Classify image type
-                image_type = classify_image_type(temp_image_path)
-
-                if image_type == "invalid":
-                    return jsonify({
-                        "status": "failed",
-                        "stage": "image_validation",
-                        "message": f"invalid message - image at index {i} is not a valid food label or kitchen image"
-                    }), 400
-
-                # Process based on type
-                if image_type == "food_label":
+                # Route images based on index (no classification needed)
+                # First image is always treated as food label
+                # Second image (if provided) is treated as hygiene image
+                if i == 0:
+                    # First image = food label
                     if results["food_label"] is not None:
                         return jsonify({
                             "status": "failed",
                             "stage": "input_validation",
                             "message": "Multiple food label images provided - only one expected"
                         }), 400
-
                     results["food_label"] = temp_image_path
 
-                elif image_type == "kitchen_hygiene":
+                elif i == 1:
+                    # Second image = hygiene
                     if results["hygiene"] is not None:
                         return jsonify({
                             "status": "failed",
                             "stage": "input_validation",
                             "message": "Multiple hygiene images provided - only one expected"
                         }), 400
-
                     results["hygiene"] = temp_image_path
+
+                else:
+                    return jsonify({
+                        "status": "failed",
+                        "stage": "input_validation",
+                        "message": "Maximum 2 images allowed (1 food label + 1 hygiene)"
+                    }), 400
 
             # Check that we have at least one valid image
             if results["food_label"] is None and results["hygiene"] is None:
