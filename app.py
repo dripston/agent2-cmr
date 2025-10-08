@@ -3,6 +3,7 @@ import json
 import base64
 import tempfile
 import re
+import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from foodlabel import Agent2FoodLabel
