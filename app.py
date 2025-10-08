@@ -4,6 +4,7 @@ import base64
 import tempfile
 import re
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from foodlabel import Agent2FoodLabel
 from hygeine import Agent2Hygiene
 from dotenv import load_dotenv
@@ -13,7 +14,7 @@ load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
-
+CORS(app)
 # Initialize Agents
 agent2_foodlabel = Agent2FoodLabel()
 agent2_hygiene = Agent2Hygiene()
