@@ -193,13 +193,12 @@ Format as JSON with keys: compliance_status, score, compliant_items, missing_ite
             result = response.json()
             analysis = result["choices"][0]["message"]["content"].strip()
 
-            # Try to parse as JSON
-            try:
-                import json
-                compliance_data = json.loads(analysis)
+            # Try to extract JSON from response (handle cases where LLM returns JSON in code blocks)
+            compliance_data = self._parse_llm_response(analysis)
 
+            if compliance_data:
                 # Check if this is an incomplete label that needs a guide report
-                if compliance_data.get("compliance_status") == "incomplete":
+                if compliance_data.get("compliance_status") in ["incomplete", "INCOMPLETE"]:
                     # Enhance the guide report with more specific guidance
                     compliance_data["guide_report"] = self._enhance_guide_report(
                         compliance_data.get("guide_report", ""),
@@ -207,8 +206,8 @@ Format as JSON with keys: compliance_status, score, compliant_items, missing_ite
                     )
 
                 return compliance_data
-            except:
-                # If not JSON, return structured response
+            else:
+                # If parsing failed, return structured response
                 return {
                     "compliance_status": "unknown",
                     "score": 50,  # Default
@@ -217,6 +216,77 @@ Format as JSON with keys: compliance_status, score, compliant_items, missing_ite
                 }
         except Exception as e:
             return {"error": f"Error checking compliance: {str(e)}"}
+
+    def _parse_llm_response(self, response_text: str) -> dict:
+        """Parse LLM response to extract clean JSON compliance data."""
+        try:
+            # First, try to parse the entire response as JSON
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            pass
+
+        # If that fails, look for JSON code blocks
+        import re
+
+        # Pattern to find JSON code blocks
+        json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+        matches = re.findall(json_pattern, response_text, re.DOTALL | re.IGNORECASE)
+
+        for match in matches:
+            try:
+                return json.loads(match)
+            except json.JSONDecodeError:
+                continue
+
+        # If no code blocks found, try to find JSON-like content
+        # Look for opening brace to closing brace
+        brace_start = response_text.find('{')
+        brace_end = response_text.rfind('}')
+
+        if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+            json_candidate = response_text[brace_start:brace_end + 1]
+            try:
+                return json.loads(json_candidate)
+            except json.JSONDecodeError:
+                pass
+
+        # If all parsing fails, create a structured response from the text
+        return self._extract_compliance_from_text(response_text)
+
+    def _extract_compliance_from_text(self, text: str) -> dict:
+        """Extract compliance information from plain text response."""
+        text_lower = text.lower()
+
+        # Determine compliance status
+        if "incomplete" in text_lower or "missing" in text_lower:
+            status = "incomplete"
+            score = 20
+        elif "compliant" in text_lower or "complete" in text_lower:
+            status = "compliant"
+            score = 85
+        else:
+            status = "unknown"
+            score = 50
+
+        # Extract missing items (look for common patterns)
+        missing_items = []
+        if "fssai" in text_lower and ("missing" in text_lower or "not compliant" in text_lower):
+            missing_items.append("FSSAI license number")
+        if "manufacturer" in text_lower and ("missing" in text_lower or "not compliant" in text_lower):
+            missing_items.append("Manufacturer/importer details")
+        if "date" in text_lower and ("missing" in text_lower or "not compliant" in text_lower):
+            missing_items.append("Date marking")
+        if "quantity" in text_lower and ("missing" in text_lower or "not compliant" in text_lower):
+            missing_items.append("Net quantity/weight")
+
+        return {
+            "compliance_status": status,
+            "score": score,
+            "compliant_items": ["Product identity/name"] if "product" in text_lower else [],
+            "missing_items": missing_items,
+            "guide_report": text,
+            "recommendations": ["Review FSSAI labeling guidelines", "Consult with labeling expert"]
+        }
 
     def _enhance_guide_report(self, basic_report: str, missing_items: list) -> str:
         """Enhance the guide report with specific actionable recommendations."""
