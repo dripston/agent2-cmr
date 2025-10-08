@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: agent2
+    runtime: docker
+    plan: starter
+    buildCommand: docker build -t agent2 .
+    startCommand: docker run -p $PORT:8000 agent2
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: AGENT2_API_KEY
+        sync: false
+      - key: AGENT2_MODEL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: EMBED_BASE_URL
+        sync: false
+      - key: EMBED_API_KEY
+        sync: false
+      - key: EMBED_MODEL
+        sync: false
+      - key: EMBED_DIM
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX
+        sync: false
+      - key: PINECONE_CLOUD
+        sync: false
+      - key: PINECONE_REGION
+        sync: false
