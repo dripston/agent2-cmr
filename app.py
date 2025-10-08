@@ -386,7 +386,7 @@ def check_fssai_compliance():
             "message": f"Internal server error: {str(e)}"
         }), 500
 
-@app.route('/coa', methods=['POST'])
+@app.route('/coa', methods=['POST', 'OPTIONS'])
 def process_coa_report():
     """Process Certificate of Analysis (COA) report endpoint"""
     try:
